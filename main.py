@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -17,10 +18,11 @@ hidden_dim = 256
 image_dim = 28 * 28  # MNIST images are 28x28
 num_classes = 10  # Digits 0-9
 batch_size = 64
-epochs = 400
+epochs = 500
 learning_rate = 0.0002
+model_path = 'conditional_generator.pth'
 
-# Generator Network (now conditional)
+# Generator Network
 class Generator(nn.Module):
     def __init__(self, latent_dim, hidden_dim, image_dim, num_classes):
         super(Generator, self).__init__()
@@ -43,7 +45,7 @@ class Generator(nn.Module):
         x = torch.cat([z, label_embed], dim=1)
         return self.net(x)
 
-# Discriminator Network (now conditional)
+# Discriminator Network
 class Discriminator(nn.Module):
     def __init__(self, image_dim, hidden_dim, num_classes):
         super(Discriminator, self).__init__()
@@ -88,12 +90,52 @@ train_dataset = torchvision.datasets.MNIST(
 )
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
+# Function to save model
+def save_model(generator, discriminator, g_optimizer, d_optimizer, epoch, losses):
+    torch.save({
+        'epoch': epoch,
+        'generator_state_dict': generator.state_dict(),
+        'discriminator_state_dict': discriminator.state_dict(),
+        'g_optimizer_state_dict': g_optimizer.state_dict(),
+        'd_optimizer_state_dict': d_optimizer.state_dict(),
+        'g_losses': losses['g_losses'],
+        'd_losses': losses['d_losses'],
+        'latent_dim': latent_dim,
+        'hidden_dim': hidden_dim,
+        'num_classes': num_classes,
+        'image_dim': image_dim
+    }, model_path)
+    print(f"Model saved at epoch {epoch}")
+
+# Function to load model
+def load_model():
+    if os.path.exists(model_path):
+        print("Loading saved model...")
+        checkpoint = torch.load(model_path, map_location=device)
+        
+        generator.load_state_dict(checkpoint['generator_state_dict'])
+        discriminator.load_state_dict(checkpoint['discriminator_state_dict'])
+        g_optimizer.load_state_dict(checkpoint['g_optimizer_state_dict'])
+        d_optimizer.load_state_dict(checkpoint['d_optimizer_state_dict'])
+        
+        start_epoch = checkpoint['epoch'] + 1
+        losses = {
+            'g_losses': checkpoint['g_losses'],
+            'd_losses': checkpoint['d_losses']
+        }
+        
+        print(f"Resuming training from epoch {start_epoch}")
+        return start_epoch, losses
+    else:
+        print("No saved model found. Starting training from scratch.")
+        return 0, {'g_losses': [], 'd_losses': []}
+
 # Training function
-def train_gan():
-    g_losses = []
-    d_losses = []
+def train_gan(start_epoch, losses):
+    g_losses = losses['g_losses']
+    d_losses = losses['d_losses']
     
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         for i, (real_images, real_labels) in enumerate(train_loader):
             # Move to device
             real_images = real_images.view(-1, image_dim).to(device)
@@ -140,6 +182,10 @@ def train_gan():
                 
                 print(f"Epoch [{epoch}/{epochs}] Batch [{i}/{len(train_loader)}] "
                       f"D_loss: {d_loss.item():.4f} G_loss: {g_loss.item():.4f}")
+        
+        # Save model after each epoch
+        current_losses = {'g_losses': g_losses, 'd_losses': d_losses}
+        save_model(generator, discriminator, g_optimizer, d_optimizer, epoch, current_losses)
     
     return g_losses, d_losses
 
@@ -184,51 +230,55 @@ def generate_all_digits(generator, num_samples_per_digit=5):
         plt.tight_layout()
         plt.show()
 
-# Train the GAN
-print("Starting Conditional GAN training...")
-g_losses, d_losses = train_gan()
-
-# Plot training losses
-plt.figure(figsize=(10, 5))
-plt.plot(g_losses, label='Generator Loss')
-plt.plot(d_losses, label='Discriminator Loss')
-plt.xlabel('Iterations')
-plt.ylabel('Loss')
-plt.legend()
-plt.title('Training Losses')
-plt.show()
-
-# Generate samples for all digits
-print("Generating samples for all digits...")
-generate_all_digits(generator)
-
-# Interactive part: Let user choose which digit to generate
-while True:
-    try:
-        user_input = input("\nEnter a digit (0-9) to generate, or 'q' to quit: ")
-        
-        if user_input.lower() == 'q':
-            print("Goodbye!")
-            break
-        
-        digit = int(user_input)
-        if 0 <= digit <= 9:
-            print(f"Generating images of digit {digit}...")
-            generate_specific_digit(generator, digit)
-        else:
-            print("Please enter a digit between 0 and 9.")
+# Main training logic
+def main():
+    # Check if we should load a saved model or start fresh
+    start_epoch, losses = load_model()
+    
+    # Only train if we haven't reached the total epochs yet
+    if start_epoch < epochs:
+        print("Starting/resuming GAN training...")
+        g_losses, d_losses = train_gan(start_epoch, losses)
+    else:
+        print("Training already completed. Loading final losses.")
+        g_losses, d_losses = losses['g_losses'], losses['d_losses']
+    
+    # Plot training losses
+    plt.figure(figsize=(10, 5))
+    plt.plot(g_losses, label='Generator Loss')
+    plt.plot(d_losses, label='Discriminator Loss')
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.title('Training Losses')
+    plt.show()
+    
+    # Generate samples for all digits
+    print("Generating samples for all digits...")
+    generate_all_digits(generator)
+    
+    # Interactive part: Let user choose which digit to generate
+    while True:
+        try:
+            user_input = input("\nEnter a digit (0-9) to generate, or 'q' to quit: ")
             
-    except ValueError:
-        print("Please enter a valid number or 'q' to quit.")
-    except KeyboardInterrupt:
-        print("\nGoodbye!")
-        break
+            if user_input.lower() == 'q':
+                print("Goodbye!")
+                break
+            
+            digit = int(user_input)
+            if 0 <= digit <= 9:
+                print(f"Generating images of digit {digit}...")
+                generate_specific_digit(generator, digit)
+            else:
+                print("Please enter a digit between 0 and 9.")
+                
+        except ValueError:
+            print("Please enter a valid number or 'q' to quit.")
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+            break
 
-# Save the trained generator
-torch.save({
-    'generator_state_dict': generator.state_dict(),
-    'epochs': epochs,
-    'latent_dim': latent_dim,
-    'hidden_dim': hidden_dim
-}, 'conditional_generator.pth')
-print("Generator saved as 'conditional_generator.pth'")
+# Run the main function
+if __name__ == "__main__":
+    main()
