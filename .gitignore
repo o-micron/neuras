@@ -3,7 +3,6 @@
 .vs/
 .vscode/
 
-conditional_generator.pth
 generator.pth
 
 assets/

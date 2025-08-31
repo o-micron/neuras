@@ -18,7 +18,7 @@ hidden_dim = 256
 image_dim = 28 * 28  # MNIST images are 28x28
 num_classes = 10  # Digits 0-9
 batch_size = 64
-epochs = 500
+epochs = 700
 learning_rate = 0.0002
 model_path = 'conditional_generator.pth'
 
