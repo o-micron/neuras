@@ -1,0 +1,11 @@
+.DS_Store
+.venv
+.vs/
+.vscode/
+
+conditional_generator.pth
+generator.pth
+
+assets/
+build/
+data/
