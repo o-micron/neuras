@@ -4,7 +4,11 @@
 .vscode/
 
 generator.pth
+generator_computational_graph
+network_architecture.png
 
 assets/
 build/
 data/
+runs/
+src/__pycache__/
