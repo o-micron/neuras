@@ -12,7 +12,7 @@ from model import load_model, save_model
 from visualizer import NetworkVisualizer
 
 # Set device
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Hyperparameters
@@ -21,7 +21,7 @@ hidden_dim = 256
 image_dim = 28 * 28  # MNIST images are 28x28
 num_classes = 10  # Digits 0-9
 batch_size = 64
-epochs = 760
+epochs = 2000
 learning_rate = 0.0002
 model_path = 'conditional_generator.pth'
 
@@ -47,29 +47,15 @@ train_dataset = torchvision.datasets.MNIST(
 )
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# VISUALIZER
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# Initialize visualizer
-visualizer = NetworkVisualizer(generator, discriminator, latent_dim, image_dim, device)
-# Text summary
-visualizer.text_summary()
-# Computational graphs
-visualizer.visualize_architecture_diagram()
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 # Training function
-def train_gan(start_epoch, losses):
+def train_gan(start_epoch, losses, visualizer):
     g_losses = losses['g_losses']
     d_losses = losses['d_losses']
     
     for epoch in range(start_epoch, epochs):
         # Visualize every 5 epochs
-        if epoch % 5 == 0:
+        if epoch % 10 == 0:
             visualizer.visualize_activations(epoch)
-            visualizer.visualize_weight_distributions(epoch)
-            visualizer.visualize_gradients(epoch)
         
         for i, (real_images, real_labels) in enumerate(train_loader):
             # Move to device
@@ -170,10 +156,21 @@ def main():
     # Check if we should load a saved model or start fresh
     start_epoch, losses = load_model(device, model_path, generator, discriminator, g_optimizer, d_optimizer)
     
+    # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    # VISUALIZER
+    # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    # Initialize visualizer
+    visualizer = NetworkVisualizer(generator, discriminator, latent_dim, image_dim, device)
+    # Text summary
+    visualizer.text_summary()
+    # Computational graphs
+    visualizer.visualize_architecture_diagram()
+    # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
     # Only train if we haven't reached the total epochs yet
     if start_epoch < epochs:
         print("Starting/resuming GAN training...")
-        g_losses, d_losses = train_gan(start_epoch, losses)
+        g_losses, d_losses = train_gan(start_epoch, losses, visualizer)
     else:
         print("Training already completed. Loading final losses.")
         g_losses, d_losses = losses['g_losses'], losses['d_losses']
